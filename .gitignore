@@ -1,0 +1,17 @@
+# Raw and processed data are downloaded by scripts, never committed
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/
