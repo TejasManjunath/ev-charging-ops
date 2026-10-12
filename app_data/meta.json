@@ -1,0 +1,12 @@
+{
+  "archive_first_day": "2026-01-28",
+  "archive_last_day": "2026-10-08",
+  "station_days_from": "2026-09-25",
+  "model_window": {
+    "start": "2026-06-30",
+    "end": "2026-08-14",
+    "excluded_days": [],
+    "fit_days": 46,
+    "rule": "stations >= 20000, snapshots_per_station >= 24, unknown share <= 15%; gaps <= 2 days"
+  }
+}
