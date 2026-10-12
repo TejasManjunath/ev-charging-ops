@@ -28,7 +28,9 @@ FAST_KW = 50
 GOOD, SERIOUS, CRITICAL, QUIET, BLUE = "#0ca30c", "#ec835a", "#d03b3b", "#a3a29c", "#2a78d6"
 STATE_COLOURS = {"OK": GOOD, "Partly down": SERIOUS, "Fully down": CRITICAL, "Feed quiet": QUIET}
 
-st.set_page_config(page_title="EV Charging Operations · Germany", layout="wide")
+REPO_URL = "https://github.com/TejasManjunath/ev-charging-ops"
+
+st.set_page_config(page_title="EV Charging Operations · Germany", page_icon="⚡", layout="wide")
 
 
 def full_width(element, *args, **kwargs):
@@ -86,6 +88,12 @@ if fast_only:
     view = view[view["power_kw"] >= FAST_KW]
 
 st.sidebar.markdown("---")
+st.sidebar.markdown(
+    "**About**  \n"
+    "Built by Tejas Manjunath, MSc Business Intelligence & Data Science (AI), ISM Dortmund.  \n"
+    "Python · pandas · Parquet · Streamlit, on open MobiData BW data.  \n"
+    f"[Code, method and data-quality notes on GitHub]({REPO_URL})"
+)
 st.sidebar.caption(
     f"Live data fetched {pd.Timestamp(live_meta['fetched_at']).tz_convert('Europe/Berlin'):%d %b %H:%M} "
     f"(Berlin time), cached for 10 minutes. History: {hist_meta['station_days_from']} to "
@@ -97,7 +105,17 @@ st.sidebar.caption(
 # --------------------------------------------------------------------------- #
 st.title("EV charging operations · Germany")
 st.caption("Live status of public charging stations that publish real-time data, "
-           "with outages ranked by impact and stale feeds kept apart.")
+           "with outages ranked by capacity lost and stale feeds kept apart.")
+with st.expander("How to read this"):
+    st.markdown(
+        "- **Needs attention now** lists stations with charge points out of service, largest charging "
+        "capacity offline first, so a dead fast-charging hub outranks a few slow wallboxes.\n"
+        "- **Days down** shows how many of the last 14 days the station had an outage: a full bar is a "
+        "chronic problem, an empty one is new today.\n"
+        "- **Feed quiet** means the operator's data feed has stopped updating. Those stations' status "
+        "is unknown, so they are kept out of the outage list instead of being counted as broken.\n"
+        "- Figures cover only stations that publish live status; live data refreshes every 10 minutes."
+    )
 
 fresh = view[view["state"] != "Feed quiet"]
 points = fresh["live_points"].sum()
@@ -114,18 +132,33 @@ c5.metric("Stations with quiet feed", f"{(view['state'] == 'Feed quiet').mean():
 # Needs attention now
 # --------------------------------------------------------------------------- #
 st.subheader("Needs attention now")
-st.caption(f"Stations with charge points out of service and a fresh feed, ranked by impact: "
-           f"points down, counted double at fast chargers (≥ {FAST_KW} kW). "
-           f"'Days down' = days with an outage in the last {n_hist_days} archive days.")
+st.caption("Stations with charge points out of service and a fresh feed, ranked by estimated "
+           "capacity offline (points down × the station's maximum power).")
 outages = fresh[fresh["out_of_service"] > 0].copy()
-outages["impact"] = outages["out_of_service"] * (1 + (outages["power_kw"] >= FAST_KW))
-outages = outages.sort_values(["impact", "out_of_service"], ascending=False)
-table = outages.head(50).assign(
-    down=lambda d: d["out_of_service"].astype(str) + " of " + d["live_points"].astype(str),
-    days_down=lambda d: d["days_down"].fillna(0).astype(int).astype(str) + f" of {n_hist_days}",
-)[["operator_name", "city", "address", "down", "power_kw", "days_down", "station_id"]]
-table.columns = ["Operator", "City", "Address", "Points down", "Max kW", "Days down", "Station ID"]
-full_width(st.dataframe, table, hide_index=True, height=360)
+outages["kw_offline"] = outages["out_of_service"] * outages["power_kw"].fillna(0)
+outages = outages.sort_values(["kw_offline", "out_of_service"], ascending=False)
+table = pd.DataFrame({
+    "Operator": outages["operator_name"],
+    "City": outages["city"],
+    "Address": outages["address"],
+    "Status": outages["state"],
+    "Points down": outages["out_of_service"].astype(str) + " of " + outages["live_points"].astype(str),
+    "Max power": outages["power_kw"],
+    "Capacity offline": outages["kw_offline"],
+    "Days down": outages["days_down"].fillna(0).astype(int),
+    "Station ID": outages["station_id"].astype(str),
+}).head(50)
+full_width(
+    st.dataframe, table, hide_index=True, height=390,
+    column_config={
+        "Max power": st.column_config.NumberColumn(format="%d kW"),
+        "Capacity offline": st.column_config.NumberColumn(format="%d kW",
+                                                          help="Points down × the station's maximum power"),
+        "Days down": st.column_config.ProgressColumn(
+            format=f"%d of {n_hist_days}", min_value=0, max_value=n_hist_days,
+            help=f"Days with at least one charge point out of service, last {n_hist_days} archive days"),
+    },
+)
 
 # --------------------------------------------------------------------------- #
 # Map and quiet feeds

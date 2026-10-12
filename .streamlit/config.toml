@@ -1,0 +1,7 @@
+[client]
+# Hide developer menu items for visitors
+toolbarMode = "minimal"
+
+[theme]
+# Neutral blue accent, so filter chips don't look like red alerts
+primaryColor = "#2a78d6"
