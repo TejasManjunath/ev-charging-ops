@@ -78,13 +78,16 @@ def main() -> int:
         print("daily_summary: missing, run notebooks/01_data_quality.ipynb first")
 
     window_path = config.PROCESSED_DIR / "model_window.json"
-    meta = {
+    meta_path = APP_DATA / "meta.json"
+    # keep keys written by other steps (e.g. the early-warning forecast)
+    meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+    meta |= {
         "archive_first_day": str(day_of(files[0]).date()),
         "archive_last_day": str(day_of(files[-1]).date()),
         "station_days_from": str(day_of(recent[0]).date()),
         "model_window": json.loads(window_path.read_text()) if window_path.exists() else None,
     }
-    (APP_DATA / "meta.json").write_text(json.dumps(meta, indent=2))
+    meta_path.write_text(json.dumps(meta, indent=2))
 
     total = sum(p.stat().st_size for p in APP_DATA.iterdir()) / 1e6
     print(f"app_data/ written: {total:.1f} MB")

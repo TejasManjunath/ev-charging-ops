@@ -15,8 +15,10 @@ Why this design
   Sundays, and the feed reports them as out of service. For each station, a
   3-hour block of the week (e.g. Sunday 12:00-15:00) counts as "scheduled closed"
   if it was out of service at least 75% of the time over the lookback, while the
-  station is clearly open at other times. Outages in scheduled-closed blocks are
-  ignored in features and labels.
+  station is clearly open at other times. Because sparse periods of the archive
+  barely sample the night, stations also inherit their operator's pooled pattern
+  (e.g. all Lidl stations together) unless their own data shows them open then.
+  Outages in scheduled-closed blocks are ignored in features and labels.
 - Label: an UNEXPECTED outage (a charge point out of order or inoperative outside
   scheduled closures) seen in at least 2 blocks of the following 7 days, so a
   single blip doesn't count.
@@ -62,6 +64,8 @@ MIN_OBS_HORIZON = 0.3       # same for the label window
 CLOSED_MIN_SHARE = 0.75     # block of week out of service at least this often -> scheduled closed
 OPEN_MAX_SHARE = 0.40       # ... provided the station has blocks of week it is clearly open in
 MIN_BOWS = 3                # at least this many closed AND open blocks of week
+MAX_OUT_SHARE_7 = 0.5       # stations down more than this share of last week are chronic, not scored
+MIN_OPERATOR_STATIONS = 20  # operators this big can lend their pooled closing pattern to their stations
 
 FEATURES = [
     "out_share_21", "out_share_7", "out_share_1", "full_out_share_21", "oos_point_share_7",
@@ -143,15 +147,36 @@ def load_blocks(start: str, end: str) -> pd.DataFrame:
 # --------------------------------------------------------------------------- #
 # Features and labels at one cutoff
 # --------------------------------------------------------------------------- #
-def scheduled_closures(past: pd.DataFrame) -> pd.DataFrame:
+def _closed_bows(s: pd.DataFrame, key: str) -> pd.DataFrame:
+    """Blocks of week closed for each `key` whose pattern has both closed and open blocks."""
+    n_closed = s[s["mean"] >= CLOSED_MIN_SHARE].groupby(key).size()
+    n_open = s[s["mean"] <= OPEN_MAX_SHARE].groupby(key).size()
+    sched = n_closed.index[(n_closed >= MIN_BOWS) & (n_open.reindex(n_closed.index).fillna(0) >= MIN_BOWS)]
+    return s[s[key].isin(sched) & (s["mean"] >= CLOSED_MIN_SHARE)][[key, "bow"]]
+
+
+def scheduled_closures(past: pd.DataFrame, stations: pd.DataFrame) -> pd.DataFrame:
     """(station_id, bow) pairs that are scheduled closed, learned from the lookback only."""
     s = past.groupby(["station_id", "bow"])["outage"].agg(["mean", "size"]).reset_index()
-    s = s[s["size"] >= 2]
-    n_closed = s[s["mean"] >= CLOSED_MIN_SHARE].groupby("station_id").size()
-    n_open = s[s["mean"] <= OPEN_MAX_SHARE].groupby("station_id").size()
-    sched = n_closed.index[(n_closed >= MIN_BOWS) & (n_open.reindex(n_closed.index).fillna(0) >= MIN_BOWS)]
-    closed = s[s["station_id"].isin(sched) & (s["mean"] >= CLOSED_MIN_SHARE)]
-    return closed[["station_id", "bow"]].assign(closed=True)
+    own = _closed_bows(s[s["size"] >= 2], "station_id")
+
+    # operator-level pattern, pooled over all of the operator's stations
+    ops = stations.set_index("station_id")["operator_name"]
+    p = past.assign(operator_name=past["station_id"].map(ops)).dropna(subset=["operator_name"])
+    big = p.groupby("operator_name")["station_id"].nunique()
+    p = p[p["operator_name"].isin(big.index[big >= MIN_OPERATOR_STATIONS])]
+    o = p.groupby(["operator_name", "bow"])["outage"].agg(["mean", "size"]).reset_index()
+    op_closed = _closed_bows(o, "operator_name")
+    inherited = (pd.DataFrame({"station_id": p["station_id"].unique()})
+                 .assign(operator_name=lambda d: d["station_id"].map(ops))
+                 .merge(op_closed, on="operator_name")[["station_id", "bow"]])
+    # ... unless the station's own data shows it open in that block
+    open_own = s[(s["size"] >= 2) & (s["mean"] <= OPEN_MAX_SHARE)][["station_id", "bow"]].assign(is_open=True)
+    inherited = inherited.merge(open_own, on=["station_id", "bow"], how="left")
+    inherited = inherited[inherited["is_open"].isna()][["station_id", "bow"]]
+
+    closed = pd.concat([own, inherited]).drop_duplicates()
+    return closed.assign(closed=True)
 
 
 def mark_unexpected(df: pd.DataFrame, closed: pd.DataFrame) -> pd.DataFrame:
@@ -166,7 +191,7 @@ def mark_unexpected(df: pd.DataFrame, closed: pd.DataFrame) -> pd.DataFrame:
 def features_at(b: pd.DataFrame, cutoff: str, stations: pd.DataFrame, with_label: bool = True) -> pd.DataFrame:
     c = pd.Timestamp(cutoff, tz=TZ)
     past = b[(b["block"] < c) & (b["block"] >= c - pd.Timedelta(days=LOOKBACK_DAYS))]
-    closed = scheduled_closures(past)
+    closed = scheduled_closures(past, stations)
     past = mark_unexpected(past, closed).sort_values(["station_id", "block"])
     last7 = past[past["block"] >= c - pd.Timedelta(days=7)]
     last1 = past[past["block"] >= c - pd.Timedelta(days=1)]
@@ -197,8 +222,8 @@ def features_at(b: pd.DataFrame, cutoff: str, stations: pd.DataFrame, with_label
         "use_21": past[~past["outage"] & ~past["closed"]].groupby("station_id")["in_use"].mean(),
         "unknown_share_7": last7.groupby("station_id")["unknown_share"].mean(),
         "live_points": g["live"].max(),
-        # state in the last observed block before the cutoff
-        "now_outage": g["outage"].last(),
+        # state in the last observed open (not scheduled-closed) block before the cutoff
+        "now_outage": past[~past["closed"]].groupby("station_id")["outage"].last(),
         "now_outdated": g["outdated"].last(),
     })
     f["longest_out_run"] = f["longest_out_run"].fillna(0)
@@ -210,9 +235,11 @@ def features_at(b: pd.DataFrame, cutoff: str, stations: pd.DataFrame, with_label
     op = last7.join(stations.set_index("station_id")["operator_name"], on="station_id")
     f["operator_out_share_7"] = f["operator_name"].map(op.groupby("operator_name")["outage"].mean())
 
-    # who gets scored: observed enough recently, working now, feed not flagged outdated
-    keep = (f["obs_7"] >= MIN_OBS_LAST7 * 7 * BLOCKS_PER_DAY) & ~f["now_outage"].astype(bool) \
-        & ~f["now_outdated"].fillna(False).astype(bool)
+    # who gets scored: observed enough recently, working now and mostly working last week
+    # (stations down most of the week are chronic cases for the outage list, not a forecast),
+    # feed not flagged outdated
+    keep = (f["obs_7"] >= MIN_OBS_LAST7 * 7 * BLOCKS_PER_DAY) & ~f["now_outage"].fillna(True).astype(bool) \
+        & (f["out_share_7"] < MAX_OUT_SHARE_7) & ~f["now_outdated"].fillna(False).astype(bool)
     f = f[keep].copy()
     f["cutoff"] = c
 
@@ -348,7 +375,7 @@ def write_report(summary, res_a, res_b, res_c, importance, train_a, test_a, test
         return float(res.loc[res["model"] == model, metric].iloc[0])
     lg, fr = "LightGBM", "Rule: how often it failed, last 21 days"
     conclusion = (
-        f"LightGBM ranks best in both tests, but only slightly ahead of a simple rule: rank stations by "
+        f"LightGBM has the best AUC in both tests, but only slightly ahead of a simple rule: rank stations by "
         f"how often they failed in the last 21 days (AUC {get(res_a, lg, 'auc'):.3f} vs {get(res_a, fr, 'auc'):.3f} "
         f"in August, {get(res_b, lg, 'auc'):.3f} vs {get(res_b, fr, 'auc'):.3f} in September). Repeated recent "
         f"faults are by far the strongest signal, and first-time failures are barely predictable "
@@ -364,7 +391,8 @@ def write_report(summary, res_a, res_b, res_c, importance, train_a, test_a, test
 
 Generated by `python -m evops.early_warning evaluate`.
 
-**Task.** For every station that is working at a cutoff date, predict whether it will report an
+**Task.** For every station that is working at a cutoff date (and was working most of the previous
+week; stations down most of the week are chronic cases, handled by the live outage list), predict whether it will report an
 unexpected outage (a charge point out of order or inoperative, seen in at least {MIN_LABEL_BLOCKS} three-hour
 blocks) in the next {HORIZON_DAYS} days. Scheduled closures, such as supermarket chargers switched off at night
 and on Sundays, are learned per station and don't count. All features use only the {LOOKBACK_DAYS} days
@@ -425,7 +453,7 @@ def predict() -> int:
     model = fit_lgbm(train)
     now = features_at(b, cutoff, st, with_label=False)
     c = pd.Timestamp(cutoff, tz=TZ)
-    closures = scheduled_closures(b[(b["block"] < c) & (b["block"] >= c - pd.Timedelta(days=LOOKBACK_DAYS))])
+    closures = scheduled_closures(b[(b["block"] < c) & (b["block"] >= c - pd.Timedelta(days=LOOKBACK_DAYS))], st)
     closures[["station_id", "bow"]].to_parquet(APP_DATA / "closures.parquet", index=False)
     now["risk"] = model.predict_proba(now[FEATURES])[:, 1]
     out = now[["station_id", "risk", "out_starts_per100", "out_share_21", "days_since_out", "obs_21"]].copy()

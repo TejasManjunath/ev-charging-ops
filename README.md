@@ -50,21 +50,22 @@ From [`notebooks/01_data_quality.ipynb`](notebooks/01_data_quality.ipynb), on 24
 **Question:** of the stations working right now, which will report an outage in the next 7 days? Code: [`evops/early_warning.py`](evops/early_warning.py), full results: [`reports/early_warning.md`](reports/early_warning.md).
 
 - **Features** use only the 21 days before the forecast date: how often the station failed, share of time down, days since the last outage, usage trend, unknown-status share, station size and power, and the operator's network-wide outage rate.
+- **Who is scored:** stations working at the forecast date that were also working most of the previous week. Stations down most of the week are chronic cases and belong in the live outage list, not a forecast.
 - **Label:** an unexpected outage (outside scheduled closures) seen in at least two 3-hour blocks of the next 7 days, so single blips don't count.
 - **Comparable over time:** the archive's capture rate drops from every few minutes (summer) to every ~2.5 hours (September). Every station is sampled once per 3-hour block, so both periods look alike to the model.
 - **Validation is time-based only:** trained on six forecast dates in late July, tested on the following unseen week and, separately, on three weeks in September with no retraining.
 
 | Test (share of stations that had an outage) | Model | AUC | Of the 100 riskiest, had an outage |
 |---|---|---|---|
-| Week of 7 Aug (16%) | Rule: share of time down, last 21 days | 0.811 | 38% |
-| | Rule: how often it failed, last 21 days | 0.840 | 99% |
-| | **LightGBM** | **0.847** | **100%** |
-| Three weeks in September (25%) | Rule: share of time down, last 21 days | 0.845 | 52% |
-| | Rule: how often it failed, last 21 days | 0.857 | 94% |
-| | **LightGBM** | **0.870** | **96%** |
-| Stations with no outage in the past 21 days (4%) | **LightGBM** | **0.576** | 5% |
+| Week of 7 Aug (15%) | Rule: share of time down, last 21 days | 0.808 | 23% |
+| | Rule: how often it failed, last 21 days | 0.835 | 99% |
+| | **LightGBM** | **0.845** | **100%** |
+| Three weeks in September (23%) | Rule: share of time down, last 21 days | 0.835 | 32% |
+| | Rule: how often it failed, last 21 days | 0.845 | 93% |
+| | **LightGBM** | **0.857** | **91%** |
+| Stations with no outage in the past 21 days (4%) | **LightGBM** | **0.585** | 8% |
 
-**What this shows, honestly:** LightGBM is the best model in both tests and holds up in September without retraining, but it is only slightly ahead of a well-chosen rule. **How often a station failed recently is by far the strongest signal**: stations with intermittent faults keep failing. First-time failures are barely predictable from this data (AUC 0.58). The practical value is a short, reliable list of stations with recurring faults for a maintenance team to check first.
+**What this shows, honestly:** LightGBM has the best AUC in both tests and holds up in September without retraining, but it is only slightly ahead of a well-chosen rule, whose top 100 was even a little more precise in September. **How often a station failed recently is by far the strongest signal**: stations with intermittent faults keep failing. First-time failures are barely predictable from this data (AUC 0.59). The practical value is a short, reliable list of stations with recurring faults for a maintenance team to check first.
 
 **First attempt that didn't work:** I first tried to detect "silent failures", stations that report "available" but where nobody charges for far longer than usual. Long, unusual idle spells ended with someone charging 84–87% of the time, the same rate as ordinary ones, and flagged stations were no more likely to report an outage later. Without repair records, a silent failure can't be told apart from a quiet day, so it was dropped. The code stays in [`evops/silent_failure.py`](evops/silent_failure.py) as a documented negative result.
 
@@ -150,6 +151,7 @@ data/         downloaded and processed archive (git-ignored)
 - 2026-10-12: Outages ranked by estimated capacity offline (points down × station maximum power) instead of points down. The first version put a 195-point site of 11 kW chargers above fully down 250 kW supercharger sites.
 - 2026-10-13: Silent-failure detection dropped: high-surprise idle spells ended with a charge as often as ordinary ones, and flagged stations failed no more often later. Moved to a supervised outage early warning, where outcomes can be checked.
 - 2026-10-13: Found ~900 Lidl chargers reported out of service every night and all Sunday (store hours). Scheduled closures are learned per station (3-hour block of the week out of service ≥ 75% of the lookback while open elsewhere) and excluded from labels, features and the live outage list. Results were stable with a 60% threshold.
+- 2026-10-14: Two fixes after the first live forecast was full of Lidl stations. (1) The sparse September archive barely samples the night, so many stations never showed their own closing pattern; stations now also inherit their operator's pooled weekly pattern unless their own data shows them open. (2) Stations down most of the previous week are no longer scored as "working": a closed night block had hidden that they were broken during opening hours.
 - 2026-10-13: Early warning built on a 3-hour grid (one snapshot per station and block), so dense summer and sparse September data are comparable. LightGBM beats both rules but only narrowly beats "how often it failed in the last 21 days"; this is reported as is.
 
 </details>
