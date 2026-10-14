@@ -1,7 +1,7 @@
 {
   "archive_first_day": "2026-01-28",
-  "archive_last_day": "2026-10-08",
-  "station_days_from": "2026-09-25",
+  "archive_last_day": "2026-10-12",
+  "station_days_from": "2026-09-29",
   "model_window": {
     "start": "2026-06-30",
     "end": "2026-08-14",
@@ -9,10 +9,10 @@
     "fit_days": 46,
     "rule": "stations >= 20000, snapshots_per_station >= 24, unknown share <= 15%; gaps <= 2 days"
   },
-  "risk_as_of": "2026-10-09",
+  "risk_as_of": "2026-10-13",
   "risk_train_cutoffs": [
     "2026-07-21",
-    "2026-10-01"
+    "2026-10-05"
   ],
   "risk_eval": {
     "test_summer": {
