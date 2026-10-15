@@ -30,5 +30,23 @@
       "prec@100": 0.08,
       "base_rate": 0.042
     }
+  },
+  "next_hour_profile": [
+    "2026-09-23",
+    "2026-10-13"
+  ],
+  "next_hour_eval": {
+    "test_august": {
+      "lgbm_auc_not_full": 0.909,
+      "profile_auc_not_full": 0.848,
+      "lgbm_auc_all": 0.922,
+      "persistence_auc_all": 0.893
+    },
+    "test_october": {
+      "lgbm_auc_not_full": 0.891,
+      "profile_auc_not_full": 0.827,
+      "lgbm_auc_all": 0.916,
+      "persistence_auc_all": 0.897
+    }
   }
 }

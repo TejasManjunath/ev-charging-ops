@@ -1,6 +1,6 @@
 # EV Charging Network Operations
 
-**An operations dashboard for public EV charging in Germany: which stations are down right now, which outages are chronic, which operator feeds can't be trusted, and which working stations are likely to fail this week.**
+**An operations dashboard for public EV charging in Germany: which stations are down right now, which outages are chronic, which operator feeds can't be trusted, which working stations are likely to fail this week, and which fast-charging hubs will be full in an hour.**
 
 [![Live dashboard](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://tejas-ev-charging-ops.streamlit.app/)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
@@ -29,6 +29,7 @@ This project handles all three before showing or modelling anything.
 | Which stations need attention now? | Stations with charge points out of service **and a fresh feed**, ranked by estimated capacity offline (points down × the station's maximum power), so a dead fast-charging hub outranks a car park of slow wallboxes. |
 | Is this a new outage or a chronic one? | "Days down": how many of the last 14 days the station had an outage, from the daily archive. |
 | Which working stations will fail this week? | A LightGBM forecast of the chance each working station reports an outage in the next 7 days, tested on weeks the model never saw (see below). |
+| Which fast hubs are about to fill up? | A second LightGBM forecast, computed live: fast-charging hubs with a free charge point now, ranked by how likely they are to have none in about an hour (see below). |
 | Which feeds can't be trusted? | Stations behind outdated feeds (about 14%) are shown as "Feed quiet", kept out of the outage list, and summarised by operator. |
 | Is it closed or broken? | Stations out of service during their usual closing hours are shown as "Scheduled closure", not as outages. |
 | Where are the problems? | Map of every live station, coloured by state, with filters for operator, city and fast chargers. |
@@ -69,6 +70,23 @@ From [`notebooks/01_data_quality.ipynb`](notebooks/01_data_quality.ipynb), on 24
 
 **First attempt that didn't work:** I first tried to detect "silent failures", stations that report "available" but where nobody charges for far longer than usual. Long, unusual idle spells ended with someone charging 84–87% of the time, the same rate as ordinary ones, and flagged stations were no more likely to report an outage later. Without repair records, a silent failure can't be told apart from a quiet day, so it was dropped. The code stays in [`evops/silent_failure.py`](evops/silent_failure.py) as a documented negative result.
 
+## Next-hour forecast for fast hubs (Phase 4)
+
+**Question:** will a fast-charging hub (≥ 50 kW, 2+ charge points) have no free charge point about an hour from now? Code: [`evops/next_hour.py`](evops/next_hour.py), full results: [`reports/next_hour.md`](reports/next_hour.md).
+
+- **Only inputs the live app has:** one live snapshot of the hub (free, in use, out of service), the time, and the hub's usual pattern by hour of the week, learned from the last three weeks of the archive. No trailing history, so the forecast runs live in the dashboard.
+- **Label:** the hub's state in the snapshot closest to 60 minutes later. "Full" means no free charge point while at least one is charging; a fully broken hub is an outage, not demand.
+- **Validation:** trained on July (5.7 million hub-hours, 9,263 hubs), tested on 1–13 August and on 1–12 October, a different season and capture regime.
+
+| Test (share full an hour later) | Model | AUC, all hubs | AUC, hubs with a free point now | Top 20 free hubs per hour: share that filled up |
+|---|---|---|---|---|
+| 1–13 Aug (1.2%) | Rule: full now, otherwise usual rate | 0.893 | 0.848 | 5.1% |
+| | **LightGBM** | **0.922** | **0.909** | **11.5%** |
+| 1–12 Oct (1.7%) | Rule: full now, otherwise usual rate | 0.897 | 0.827 | 7.0% |
+| | **LightGBM** | **0.916** | **0.891** | 6.6% |
+
+**What this shows, honestly:** a full hub stays full about half the time, so "full now" is already a strong forecast, and it even has the better average precision across all hubs. The model's value is for hubs that are free right now, where it ranks clearly better than the hub's usual pattern (AUC 0.91 vs 0.85). But full hubs are rare (1–2% of hub-hours), so even its top picks mostly stay free, and in October they were no better than the rule's. It is a ranking, not an alarm, and the scores run high: in tests, hubs scoring above 50% were full an hour later 36–45% of the time, so the dashboard shows a score rather than a promised probability. The deployed model is retrained with October data.
+
 ## How it works
 
 ```mermaid
@@ -81,6 +99,8 @@ flowchart LR
     E --> F[("app_data/<br/>~1 MB, committed")]
     C --> J["evops/early_warning.py<br/>3-hour grid, LightGBM"]
     J --> F
+    C --> K["evops/next_hour.py<br/>hub profiles, LightGBM"]
+    K --> F
     G["MobiData BW<br/>live GeoServer layer"] --> H["evops/live.py<br/>one request, ~36k stations"]
     F --> I["Streamlit dashboard"]
     H --> I
@@ -99,7 +119,8 @@ Python · pandas · PyArrow / Parquet · LightGBM · scikit-learn · Streamlit �
 - [x] **Phase 1:** ingestion pipeline and data-quality analysis
 - [x] **Phase 2:** live operations dashboard, deployed
 - [x] **Phase 3:** outage early warning (LightGBM), validated on unseen weeks; silent-failure detection tested and dropped
-- [ ] **Phase 4:** next-hour forecast: which stations will have no free charge point in the next hour
+- [x] **Phase 4:** next-hour forecast for fast hubs (LightGBM), computed live in the dashboard
+- [ ] Nightly automatic refresh of data and both models (GitHub Actions)
 
 ## Run it locally
 
@@ -111,6 +132,8 @@ jupyter nbconvert --to notebook --execute --inplace notebooks/01_data_quality.ip
 python -m evops.app_data                    # packs the last 14 days into app_data/
 python -m evops.early_warning evaluate      # backtests, writes reports/early_warning.md
 python -m evops.early_warning predict       # retrains on all data, writes app_data/risk.parquet and closures.parquet
+python -m evops.next_hour evaluate          # backtests, writes reports/next_hour.md
+python -m evops.next_hour predict           # retrains, writes models/next_hour_lgbm.txt and app_data/hub_profile.parquet
 streamlit run app/streamlit_app.py          # opens the dashboard
 ```
 
@@ -121,8 +144,8 @@ To run just the dashboard, skip the middle steps: `app_data/` is already in the 
 ```
 app/          Streamlit dashboard
 app_data/     small history pack the dashboard reads (committed)
-evops/        pipeline: config, feed check, ingestion, live fetch, app data, early warning
-models/       trained LightGBM model and its evaluation results
+evops/        pipeline: config, feed check, ingestion, live fetch, app data, early warning, next-hour forecast
+models/       trained LightGBM models and their evaluation results
 notebooks/    data-quality analysis
 tools/        script that builds the notebook
 docs/         screenshots
@@ -153,6 +176,7 @@ data/         downloaded and processed archive (git-ignored)
 - 2026-10-13: Found ~900 Lidl chargers reported out of service every night and all Sunday (store hours). Scheduled closures are learned per station (3-hour block of the week out of service ≥ 75% of the lookback while open elsewhere) and excluded from labels, features and the live outage list. Results were stable with a 60% threshold.
 - 2026-10-14: Two fixes after the first live forecast was full of Lidl stations. (1) The sparse September archive barely samples the night, so many stations never showed their own closing pattern; stations now also inherit their operator's pooled weekly pattern unless their own data shows them open. (2) Stations down most of the previous week are no longer scored as "working": a closed night block had hidden that they were broken during opening hours.
 - 2026-10-13: Early warning built on a 3-hour grid (one snapshot per station and block), so dense summer and sparse September data are comparable. LightGBM beats both rules but only narrowly beats "how often it failed in the last 21 days"; this is reported as is.
+- 2026-10-15: Next-hour forecast limited to fast hubs (≥ 50 kW, 2+ points) and to inputs the live app has: one snapshot plus a weekly profile per hub. Persistence is hard to beat across all hubs; results are reported separately for hubs that are free now, where the forecast adds value. In October the model's top picks were no better than the profile rule, so the dashboard presents it as a ranking, not an alarm.
 
 </details>
 

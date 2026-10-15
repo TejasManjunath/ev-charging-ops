@@ -67,11 +67,13 @@ def load_history():
     risk = pd.read_parquet(APP_DATA / "risk.parquet") if (APP_DATA / "risk.parquet").exists() else None
     closures = (pd.read_parquet(APP_DATA / "closures.parquet")
                 if (APP_DATA / "closures.parquet").exists() else pd.DataFrame(columns=["station_id", "bow"]))
-    return days, summary, meta, risk, closures
+    hub_profile = (pd.read_parquet(APP_DATA / "hub_profile.parquet")
+                   if (APP_DATA / "hub_profile.parquet").exists() else None)
+    return days, summary, meta, risk, closures, hub_profile
 
 
 live, live_meta = load_live()
-days, summary, hist_meta, risk, closures = load_history()
+days, summary, hist_meta, risk, closures, hub_profile = load_history()
 n_hist_days = days["day"].nunique()
 chronic = days.groupby("station_id")["any_out_of_service"].sum().rename("days_down")
 live = live.merge(chronic, on="station_id", how="left")
@@ -131,6 +133,8 @@ with st.expander("How to read this"):
         "supermarket chargers at night and on Sundays. That is not a fault, so it is not counted as one.\n"
         "- **Likely to fail this week** is a machine-learning forecast (LightGBM) of which working stations "
         "will report an outage in the next 7 days, tested on weeks the model never saw.\n"
+        "- **Fast hubs about to fill up** is a second forecast: which fast-charging hubs with a free charge point "
+        "now are most likely to have none in about an hour, from their live state and usual weekly pattern.\n"
         "- Figures cover only stations that publish live status; live data refreshes every 10 minutes."
     )
 
@@ -213,6 +217,61 @@ if risk is not None:
             "Chance of outage": st.column_config.ProgressColumn(
                 format="%d%%", min_value=0, max_value=100, width="medium",
                 help="Forecast probability of at least one charge point out of service in the next 7 days"),
+            "Max power": st.column_config.NumberColumn(format="%d kW"),
+        },
+    )
+
+# --------------------------------------------------------------------------- #
+# Fast hubs: full in an hour? (Phase 4 forecast)
+# --------------------------------------------------------------------------- #
+MODEL_NEXT_HOUR = ROOT / "models" / "next_hour_lgbm.txt"
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def next_hour_scores(fetched_at: str):
+    from evops.next_hour import score_live
+    return score_live(live, hub_profile, MODEL_NEXT_HOUR, at=fetched_at)
+
+
+if hub_profile is not None and MODEL_NEXT_HOUR.exists():
+    st.subheader("Fast hubs about to fill up")
+    nh = hist_meta.get("next_hour_eval", {})
+    tested = ""
+    if nh:
+        tested = (f" For hubs with a free charge point now, it ranks better than the hub's usual pattern alone "
+                  f"(AUC {nh['test_august']['lgbm_auc_not_full']:.2f} vs {nh['test_august']['profile_auc_not_full']:.2f} "
+                  f"in August tests, {nh['test_october']['lgbm_auc_not_full']:.2f} vs "
+                  f"{nh['test_october']['profile_auc_not_full']:.2f} in October).")
+    st.caption(
+        f"Fast-charging hubs (≥ {FAST_KW} kW, 2+ charge points) that still have a free charge point, ranked by how "
+        f"likely they are to have none about an hour from now. LightGBM on each hub's live state and its usual "
+        f"pattern by hour of the week.{tested} Full hubs are rare, so most hubs here will still have a free point: "
+        "read it as a ranking, not an alarm."
+    )
+    scored = next_hour_scores(live_meta["fetched_at"])
+    scored = scored[scored["station_id"].isin(view["station_id"])]
+    st.caption(f"Fast hubs with no free charge point right now: **{int(scored['full_now'].sum()):,}** of "
+               f"{len(scored):,} (left out of the list below).")
+    top = scored[scored["full_now"] == 0].sort_values("p_full_1h", ascending=False).head(30).merge(
+        live[["station_id", "operator_name", "city", "address"]], on="station_id", how="left")
+    htable = pd.DataFrame({
+        "Operator": top["operator_name"],
+        "City": top["city"],
+        "Address": top["address"],
+        "Free now": top["available"].astype(int).astype(str) + " of " + top["live_points"].astype(int).astype(str),
+        "Full-in-1-hour score": (top["p_full_1h"] * 100).round(0),
+        "Usually full at this hour": (top["prof_full_next"] * 100).round(0),
+        "Max power": top["power_kw"],
+    })
+    full_width(
+        st.dataframe, htable, hide_index=True, height=390,
+        column_config={
+            "Full-in-1-hour score": st.column_config.ProgressColumn(
+                format="%d", min_value=0, max_value=100, width="medium",
+                help="Model score for no free charge point about 60 minutes from now. The model is overconfident at "
+                     "the top: in tests, hubs scoring above 50 were full an hour later 36-45% of the time."),
+            "Usually full at this hour": st.column_config.NumberColumn(
+                format="%d%%", help="How often this hub had no free charge point in that hour of the week, last 3 weeks"),
             "Max power": st.column_config.NumberColumn(format="%d kW"),
         },
     )

@@ -1,0 +1,169 @@
+{
+  "train_rows": 5660926,
+  "test_august": [
+    {
+      "model": "Rule: full now, otherwise usual rate",
+      "auc_all": 0.8927351283202294,
+      "ap_all": 0.24210877670619696,
+      "brier_all": NaN,
+      "auc_not_full": 0.848149751949422,
+      "ap_not_full": 0.04404376152474195,
+      "top20_hit": 0.05149313962873285,
+      "n": 2621028,
+      "base_rate": 0.012318830626761713,
+      "n_not_full": 2588646,
+      "base_rate_not_full": 0.008337177041588538
+    },
+    {
+      "model": "Profile: how often full at that hour",
+      "auc_all": 0.8570579037438519,
+      "ap_all": 0.10370496799169607,
+      "brier_all": 0.012281858678997025,
+      "auc_not_full": 0.848149751949422,
+      "ap_not_full": 0.04404376152474195,
+      "top20_hit": 0.05149313962873285,
+      "n": 2621028,
+      "base_rate": 0.012318830626761713,
+      "n_not_full": 2588646,
+      "base_rate_not_full": 0.008337177041588538
+    },
+    {
+      "model": "Logistic regression",
+      "auc_all": 0.8694571354348752,
+      "ap_all": 0.18827870195836144,
+      "brier_all": 0.012039516707987937,
+      "auc_not_full": 0.8146163293085386,
+      "ap_not_full": 0.045731347084825395,
+      "top20_hit": 0.08652138821630347,
+      "n": 2621028,
+      "base_rate": 0.012318830626761713,
+      "n_not_full": 2588646,
+      "base_rate_not_full": 0.008337177041588538
+    },
+    {
+      "model": "LightGBM",
+      "auc_all": 0.921573487180651,
+      "ap_all": 0.2268349077680268,
+      "brier_all": 0.0113784028571137,
+      "auc_not_full": 0.9093804723258461,
+      "ap_not_full": 0.07906948654640805,
+      "top20_hit": 0.11541565778853914,
+      "n": 2621028,
+      "base_rate": 0.012318830626761713,
+      "n_not_full": 2588646,
+      "base_rate_not_full": 0.008337177041588538
+    }
+  ],
+  "test_october": [
+    {
+      "model": "Rule: full now, otherwise usual rate",
+      "auc_all": 0.8965010983652366,
+      "ap_all": 0.3158696960518534,
+      "brier_all": NaN,
+      "auc_not_full": 0.8274994985450762,
+      "ap_not_full": 0.04260582839029006,
+      "top20_hit": 0.06957482054113749,
+      "n": 2078776,
+      "base_rate": 0.01689503823403772,
+      "n_not_full": 2044704,
+      "base_rate_not_full": 0.009724145891043399
+    },
+    {
+      "model": "Profile: how often full at that hour",
+      "auc_all": 0.8454863967637316,
+      "ap_all": 0.0938456237593656,
+      "brier_all": 0.017179139102643536,
+      "auc_not_full": 0.8274994985450762,
+      "ap_not_full": 0.04260582839029006,
+      "top20_hit": 0.06957482054113749,
+      "n": 2078776,
+      "base_rate": 0.01689503823403772,
+      "n_not_full": 2044704,
+      "base_rate_not_full": 0.009724145891043399
+    },
+    {
+      "model": "Logistic regression",
+      "auc_all": 0.8867733819405466,
+      "ap_all": 0.2200450003865707,
+      "brier_all": 0.016184622736676146,
+      "auc_not_full": 0.8147451816718431,
+      "ap_not_full": 0.04775408580217511,
+      "top20_hit": 0.07804159764402724,
+      "n": 2078776,
+      "base_rate": 0.01689503823403772,
+      "n_not_full": 2044704,
+      "base_rate_not_full": 0.009724145891043399
+    },
+    {
+      "model": "LightGBM",
+      "auc_all": 0.9157498924103942,
+      "ap_all": 0.2395856313782748,
+      "brier_all": 0.01653802866751319,
+      "auc_not_full": 0.8906655887708123,
+      "ap_not_full": 0.06316385826059513,
+      "top20_hit": 0.06607767347690043,
+      "n": 2078776,
+      "base_rate": 0.01689503823403772,
+      "n_not_full": 2044704,
+      "base_rate_not_full": 0.009724145891043399
+    }
+  ],
+  "importance": [
+    {
+      "feature": "prof_full_next",
+      "auc_drop": 0.041219277934529064
+    },
+    {
+      "feature": "hour",
+      "auc_drop": 0.03484437754813582
+    },
+    {
+      "feature": "occ_share",
+      "auc_drop": 0.011763652832901927
+    },
+    {
+      "feature": "full_now",
+      "auc_drop": 0.009645962763904984
+    },
+    {
+      "feature": "available",
+      "auc_drop": 0.007961256943100126
+    },
+    {
+      "feature": "free_share",
+      "auc_drop": 0.007432794024219073
+    },
+    {
+      "feature": "hub_full_rate",
+      "auc_drop": 0.006689925116654782
+    },
+    {
+      "feature": "prof_full_now",
+      "auc_drop": 0.00447340871827399
+    },
+    {
+      "feature": "live_points",
+      "auc_drop": 0.0018622694517676324
+    },
+    {
+      "feature": "oos",
+      "auc_drop": 0.0011559206436400071
+    },
+    {
+      "feature": "prof_occ_next",
+      "auc_drop": 0.0008142697925590525
+    },
+    {
+      "feature": "power_kw",
+      "auc_drop": 0.0007549117303907357
+    },
+    {
+      "feature": "charging",
+      "auc_drop": 0.0006926608618880911
+    },
+    {
+      "feature": "dow",
+      "auc_drop": -0.001000207354580877
+    }
+  ]
+}
