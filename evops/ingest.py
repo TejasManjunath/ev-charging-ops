@@ -162,6 +162,20 @@ def fetch_to_memory(url: str) -> io.BytesIO:
     return io.BytesIO(resp.content)
 
 
+def incomplete_days(window_days: int = 4, share: float = 0.6) -> set[str]:
+    """Days from the last few days whose file looked partly published: far fewer snapshots
+    per station than the days before. They are re-processed on the next run instead of
+    skipped. Older sparse days are accepted as they are: by then the archive file is final,
+    and a sparse day is a gap in the source, not a download that came too early."""
+    if not MANIFEST_PATH.exists():
+        return set()
+    m = pd.read_csv(MANIFEST_PATH).sort_values("day").tail(window_days + 14).reset_index(drop=True)
+    typical = m["snapshots_per_station"].rolling(7, min_periods=3).median().shift(1)
+    low = m["snapshots_per_station"] < share * typical
+    recent = m["day"] >= (date.today() - timedelta(days=window_days)).isoformat()
+    return set(m.loc[low & recent, "day"])
+
+
 def ingest_day(day: date, keep_raw: bool, force: bool = False) -> str:
     if day_path(day).exists() and not force:
         return "skipped (done)"
@@ -221,12 +235,16 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     days = date_range(args)
+    redo = incomplete_days()
     print(f"Ingesting {len(days)} day(s): {days[0]} to {days[-1]}")
+    if redo & {d.isoformat() for d in days}:
+        print("Re-processing days that were only partly published last time:",
+              ", ".join(sorted(redo & {d.isoformat() for d in days})))
     failures = []
     for i, day in enumerate(days, 1):
         t0 = time.time()
         try:
-            msg = ingest_day(day, args.keep_raw, args.force)
+            msg = ingest_day(day, args.keep_raw, args.force or day.isoformat() in redo)
         except requests.HTTPError as exc:
             msg = f"FAILED: HTTP {exc.response.status_code}"
             failures.append(day)

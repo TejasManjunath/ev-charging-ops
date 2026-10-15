@@ -15,3 +15,8 @@ venv/
 .DS_Store
 .vscode/
 .idea/
+
+# Local run logs and placeholder files
+reports/*_log.txt
+reports/live_probe.md
+**/.gitkeep

@@ -181,7 +181,7 @@ def scheduled_closures(past: pd.DataFrame, stations: pd.DataFrame) -> pd.DataFra
 
 def mark_unexpected(df: pd.DataFrame, closed: pd.DataFrame) -> pd.DataFrame:
     df = df.merge(closed, on=["station_id", "bow"], how="left")
-    df["closed"] = df["closed"].fillna(False).astype(bool)
+    df["closed"] = df["closed"].eq(True)
     df["outage"] = df["outage"] & ~df["closed"]
     df["full_out"] = df["full_out"] & ~df["closed"]
     df.loc[df["closed"], "oos"] = 0
@@ -238,8 +238,8 @@ def features_at(b: pd.DataFrame, cutoff: str, stations: pd.DataFrame, with_label
     # who gets scored: observed enough recently, working now and mostly working last week
     # (stations down most of the week are chronic cases for the outage list, not a forecast),
     # feed not flagged outdated
-    keep = (f["obs_7"] >= MIN_OBS_LAST7 * 7 * BLOCKS_PER_DAY) & ~f["now_outage"].fillna(True).astype(bool) \
-        & (f["out_share_7"] < MAX_OUT_SHARE_7) & ~f["now_outdated"].fillna(False).astype(bool)
+    keep = (f["obs_7"] >= MIN_OBS_LAST7 * 7 * BLOCKS_PER_DAY) & ~f["now_outage"].astype("boolean").fillna(True).astype(bool) \
+        & (f["out_share_7"] < MAX_OUT_SHARE_7) & ~f["now_outdated"].astype("boolean").fillna(False).astype(bool)
     f = f[keep].copy()
     f["cutoff"] = c
 
