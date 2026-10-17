@@ -50,8 +50,13 @@ PRIOR = 4   # pseudo-observations shrinking a thin hour-of-week cell towards the
 FEATURES = [
     "live_points", "available", "charging", "oos", "occ_share", "free_share", "full_now",
     "hour", "dow", "power_kw",
-    "prof_full_now", "prof_full_next", "prof_occ_next", "hub_full_rate",
+    "prof_full_now", "prof_full_next", "hub_full_rate",
 ]
+# Common-sense direction for each feature (+1 more full, -1 less full, 0 free). Without it,
+# the model learned a spike for one narrow value of the typical-occupancy feature and gave
+# idle hubs that are never full a high score; that feature was also dropped.
+MONOTONE = {"available": -1, "occ_share": 1, "free_share": -1, "full_now": 1,
+            "prof_full_now": 1, "prof_full_next": 1, "hub_full_rate": 1}
 FEATURE_LABELS = {
     "live_points": "Charge points reporting", "available": "Free charge points now",
     "charging": "Charge points in use now", "oos": "Charge points out of service now",
@@ -172,8 +177,9 @@ def station_power() -> pd.Series:
 # --------------------------------------------------------------------------- #
 def fit_lgbm(train: pd.DataFrame):
     import lightgbm as lgb
-    m = lgb.LGBMClassifier(n_estimators=300, learning_rate=0.05, num_leaves=63, min_child_samples=100,
-                           subsample=0.8, subsample_freq=1, colsample_bytree=0.8, random_state=0, verbose=-1)
+    m = lgb.LGBMClassifier(n_estimators=300, learning_rate=0.05, num_leaves=63, min_child_samples=1000,
+                           subsample=0.8, subsample_freq=1, colsample_bytree=0.8, random_state=0, verbose=-1,
+                           monotone_constraints=[MONOTONE.get(f, 0) for f in FEATURES])
     return m.fit(train[FEATURES], train["y"])
 
 
@@ -294,7 +300,8 @@ def write_report(res_aug, res_oct, importance, train, test_aug, test_oct) -> Non
         f"But full hubs are rare ({g(res_aug, lg, 'base_rate'):.1%} of hub-hours), so even the top of the list mostly "
         f"stays free: of the 20 free hubs ranked most likely to fill up each hour, {g(res_aug, lg, 'top20_hit'):.1%} did in "
         f"August (usual-pattern rule: {g(res_aug, pr, 'top20_hit'):.1%}) and {g(res_oct, lg, 'top20_hit'):.1%} in October "
-        f"(rule: {g(res_oct, pr, 'top20_hit'):.1%}), so in October the model's top picks were no better than the rule's. "
+        f"(rule: {g(res_oct, pr, 'top20_hit'):.1%}), so in October its top picks were "
+        f"{'no better than' if g(res_oct, lg, 'top20_hit') <= g(res_oct, pr, 'top20_hit') else 'only slightly better than'} the rule's. "
         f"The forecast is useful as a ranking, not as a yes/no alarm, and its scores run high at the top."
     )
     imp = ["| Signal | AUC lost when shuffled |", "|---|---|"]

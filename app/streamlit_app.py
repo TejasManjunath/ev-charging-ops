@@ -269,7 +269,7 @@ if hub_profile is not None and MODEL_NEXT_HOUR.exists():
             "Full-in-1-hour score": st.column_config.ProgressColumn(
                 format="%d", min_value=0, max_value=100, width="medium",
                 help="Model score for no free charge point about 60 minutes from now. The model is overconfident at "
-                     "the top: in tests, hubs scoring above 50 were full an hour later 36-45% of the time."),
+                     "the top: in tests, hubs scoring above 50 (76 on average) were full an hour later about half the time."),
             "Usually full at this hour": st.column_config.NumberColumn(
                 format="%d%%", help="How often this hub had no free charge point in that hour of the week, last 3 weeks"),
             "Max power": st.column_config.NumberColumn(format="%d kW"),

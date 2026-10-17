@@ -8,7 +8,7 @@ hour of the week, because that is all the live dashboard has.
 
 ## Conclusion
 
-Across all hubs, the simple rule is already strong (AUC 0.893 in August) and has the better average precision (0.242 vs 0.227), because a hub that is full now stays full about half the time; LightGBM reaches 0.922. The useful case is hubs with a free charge point now: there, 'full now' tells you nothing, the hub's usual pattern reaches AUC 0.848, and LightGBM 0.909 (August) and 0.891 (October, other season and capture regime). But full hubs are rare (1.2% of hub-hours), so even the top of the list mostly stays free: of the 20 free hubs ranked most likely to fill up each hour, 11.5% did in August (usual-pattern rule: 5.1%) and 6.6% in October (rule: 7.0%), so in October the model's top picks were no better than the rule's. The forecast is useful as a ranking, not as a yes/no alarm, and its scores run high at the top.
+Across all hubs, the simple rule is already strong (AUC 0.893 in August) and has the better average precision (0.242 vs 0.238), because a hub that is full now stays full about half the time; LightGBM reaches 0.926. The useful case is hubs with a free charge point now: there, 'full now' tells you nothing, the hub's usual pattern reaches AUC 0.848, and LightGBM 0.912 (August) and 0.895 (October, other season and capture regime). But full hubs are rare (1.2% of hub-hours), so even the top of the list mostly stays free: of the 20 free hubs ranked most likely to fill up each hour, 12.4% did in August (usual-pattern rule: 5.1%) and 7.9% in October (rule: 7.0%), so in October its top picks were only slightly better than the rule's. The forecast is useful as a ranking, not as a yes/no alarm, and its scores run high at the top.
 
 **Training data.** 5,660,926 hub-hours from 9,263 hubs, 30 June to 31 July 2026.
 
@@ -18,8 +18,8 @@ Across all hubs, the simple rule is already strong (AUC 0.893 in August) and has
 |---|---|---|---|---|---|
 | Rule: full now, otherwise usual rate | 0.893 | 0.242 | 0.848 | 0.044 | 5.1% |
 | Profile: how often full at that hour | 0.857 | 0.104 | 0.848 | 0.044 | 5.1% |
-| Logistic regression | 0.869 | 0.188 | 0.815 | 0.046 | 8.7% |
-| LightGBM | 0.922 | 0.227 | 0.909 | 0.079 | 11.5% |
+| Logistic regression | 0.868 | 0.188 | 0.812 | 0.045 | 8.5% |
+| LightGBM | 0.926 | 0.238 | 0.912 | 0.085 | 12.4% |
 
 ## Test 2: 1-12 October 2026 (2,078,776 hub-hours, 1.7% full an hour later)
 
@@ -29,18 +29,18 @@ Model still trained on July only. Hub profiles here come from 10-30 September, a
 |---|---|---|---|---|---|
 | Rule: full now, otherwise usual rate | 0.897 | 0.316 | 0.827 | 0.043 | 7.0% |
 | Profile: how often full at that hour | 0.845 | 0.094 | 0.827 | 0.043 | 7.0% |
-| Logistic regression | 0.887 | 0.220 | 0.815 | 0.048 | 7.8% |
-| LightGBM | 0.916 | 0.240 | 0.891 | 0.063 | 6.6% |
+| Logistic regression | 0.886 | 0.220 | 0.813 | 0.048 | 7.7% |
+| LightGBM | 0.922 | 0.303 | 0.895 | 0.080 | 7.9% |
 
 ## What drives the predictions
 
 | Signal | AUC lost when shuffled |
 |---|---|
-| How often full in the next hour of the week | 0.041 |
-| Hour of day | 0.035 |
-| Share in use now | 0.012 |
-| Full now | 0.010 |
+| Hour of day | 0.042 |
+| How often full in the next hour of the week | 0.028 |
+| Full now | 0.011 |
+| How often full overall | 0.011 |
+| Share in use now | 0.008 |
 | Free charge points now | 0.008 |
-| Share free now | 0.007 |
-| How often full overall | 0.007 |
-| How often full at this hour of the week | 0.004 |
+| Charge points out of service now | 0.005 |
+| Charge points reporting | 0.004 |

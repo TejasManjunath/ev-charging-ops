@@ -32,20 +32,20 @@
     }
   },
   "next_hour_profile": [
-    "2026-09-24",
-    "2026-10-14"
+    "2026-09-23",
+    "2026-10-13"
   ],
   "next_hour_eval": {
     "test_august": {
-      "lgbm_auc_not_full": 0.909,
+      "lgbm_auc_not_full": 0.912,
       "profile_auc_not_full": 0.848,
-      "lgbm_auc_all": 0.922,
+      "lgbm_auc_all": 0.926,
       "persistence_auc_all": 0.893
     },
     "test_october": {
-      "lgbm_auc_not_full": 0.891,
+      "lgbm_auc_not_full": 0.895,
       "profile_auc_not_full": 0.827,
-      "lgbm_auc_all": 0.916,
+      "lgbm_auc_all": 0.922,
       "persistence_auc_all": 0.897
     }
   }
